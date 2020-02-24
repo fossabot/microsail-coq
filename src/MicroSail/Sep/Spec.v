@@ -291,6 +291,11 @@ Module SymbolicTerms
     forall b, InCtx b Σ1 -> Term Σ2 (snd b).
   (* Hint Unfold Sub. *)
 
+  Definition sub_snoc {Σ1 Σ2 : Ctx (𝑺 * Ty)} (ζ : Sub Σ1 Σ2)
+    (b : 𝑺 * Ty) (t : Term Σ2 (snd b)) : Sub (Σ1 ▻ b) Σ2 :=
+    inctx_case_snoc (fun b' => Term Σ2 (snd b')) t ζ.
+  Arguments sub_snoc {_ _} _ _ _.
+
   Section WithSub.
     Context {Σ1 Σ2 : Ctx (𝑺 * Ty)}.
     Variable (ζ : Sub Σ1 Σ2).
@@ -761,5 +766,396 @@ Module SymbolicSemantics_Mutator
   Definition ValidContractEnv (cenv : SepContractEnv) : Prop :=
     forall (Δ : Ctx (𝑿 * Ty)) (τ : Ty) (f : 𝑭 Δ τ),
       ValidContract (Pi f) (cenv Δ τ f).
+
+  Section Phronesis.
+
+    Definition Phronesis (Σ : Ctx (𝑺 * Ty)) (Γ1 Γ2 : Ctx (𝑿 * Ty)) (A : Type) : Type :=
+      SymbolicState Σ Γ1 -> Outcome { Σ' & Sub Σ Σ' * A * SymbolicState Σ' Γ2 * list Obligation }%type.
+    Bind Scope phronesis_scope with Phronesis.
+
+    Definition phronesis_lift_outcome {Σ Γ A} (o : Outcome A) : Phronesis Σ Γ Γ A :=
+      fun s => outcome_map (fun a => existT _ Σ (sub_id Σ , a , s , nil)) o.
+    Definition phronesis_lift_mutator {Σ Γ1 Γ2 A} (m : Mutator Σ Γ1 Γ2 A) : Phronesis Σ Γ1 Γ2 A :=
+      fun s => outcome_map (fun '(a , s , w) => existT _ Σ (sub_id Σ , a , s , w)) (m s).
+
+    Definition phronesis_demonic {Σ : Ctx (𝑺 * Ty)} {Γ1 Γ2 : Ctx (𝑿 * Ty)} {I : Type} {A : Type} (ms : I -> Phronesis Σ Γ1 Γ2 A) : Phronesis Σ Γ1 Γ2 A :=
+      fun (s : SymbolicState Σ Γ1) => (⨂ i : I => ms i s)%out.
+    Definition phronesis_angelic {Σ : Ctx (𝑺 * Ty)} {Γ1 Γ2 : Ctx (𝑿 * Ty)} {I : Type} {A : Type} (ms : I -> Phronesis Σ Γ1 Γ2 A) : Phronesis Σ Γ1 Γ2 A :=
+      fun (s : SymbolicState Σ Γ1) => (⨁ i : I => ms i s)%out.
+    Definition phronesis_demonic_binary {Σ Γ1 Γ2 A} (m1 m2 : Phronesis Σ Γ1 Γ2 A) : Phronesis Σ Γ1 Γ2 A :=
+      phronesis_demonic (fun b : bool => if b then m1 else m2).
+    Definition phronesis_angelic_binary {Σ Γ1 Γ2 A} (m1 m2 : Phronesis Σ Γ1 Γ2 A) : Phronesis Σ Γ1 Γ2 A :=
+      phronesis_angelic (fun b : bool => if b then m1 else m2).
+
+    Definition phronesis_fresh {Σ Γ A} b (ma : Phronesis (Σ ▻ b) Γ Γ A) : Phronesis Σ Γ Γ A :=
+      fun s => outcome_bind
+                 (ma (wk1_symbolicstate s))
+                 (fun '(existT _ Σ' (ζ , a , s' , w)) =>
+                    outcome_pure (existT _ Σ' (sub_comp sub_wk1 ζ , a , s' , w))).
+    Arguments phronesis_fresh {_ _ _} _ _.
+
+    Definition phronesis_pure {Σ Γ A} (a : A) : Phronesis Σ Γ Γ A :=
+      fun s => outcome_pure (existT _ Σ (sub_id Σ , a, s, nil)).
+    Definition phronesis_bind {Σ Γ1 Γ2 Γ3 A B} (ma : Phronesis Σ Γ1 Γ2 A) (f : forall {Σ' : Ctx (𝑺 * Ty)}, Sub Σ Σ' -> A -> Phronesis Σ' Γ2 Γ3 B) : Phronesis Σ Γ1 Γ3 B :=
+      fun s0 =>
+        outcome_bind (ma s0)     (fun '(existT _ Σ1 (ζ1 , a , s1 , w1)) =>
+        outcome_bind (f ζ1 a s1) (fun '(existT _ Σ2 (ζ2 , b , s2 , w2)) =>
+        outcome_pure (existT _ Σ2 (sub_comp ζ1 ζ2 , b , s2 , w1 ++ w2)))).
+    Definition phronesis_map {Σ Γ1 Γ2 A B} (f : A -> B) (ma : Phronesis Σ Γ1 Γ2 A) : Phronesis Σ Γ1 Γ2 B :=
+      phronesis_bind ma (fun _ _ a => phronesis_pure (f a)).
+
+    Definition phronesis_mutator_bind {Σ Γ1 Γ2 Γ3 A B} (ma : Mutator Σ Γ1 Γ2 A) (f : A -> Phronesis Σ Γ2 Γ3 B) : Phronesis Σ Γ1 Γ3 B :=
+      fun s0 =>
+        outcome_bind (ma s0) (fun '(a , s1 , w1) =>
+        outcome_bind (f a s1) (fun '(existT _ Σ2 (ζ2 , b , s2 , w2)) =>
+        outcome_pure (existT _ Σ2 (ζ2 , b , s2 , w1 ++ w2)))).
+
+    Definition phronesis_mutator_bind_right {Σ Γ1 Γ2 Γ3 A B} (ma : Mutator Σ Γ1 Γ2 A) (mb : Phronesis Σ Γ2 Γ3 B) : Phronesis Σ Γ1 Γ3 B :=
+      phronesis_mutator_bind ma (fun _ => mb).
+    Program Definition phronesis_mutator_bind_left {Σ Γ1 Γ2 Γ3 A B} (ma : Mutator Σ Γ1 Γ2 A) (mb : Phronesis Σ Γ2 Γ3 B) : Phronesis Σ Γ1 Γ3 A :=
+      phronesis_mutator_bind ma (fun a => phronesis_map (fun _ => a) mb).
+
+  End Phronesis.
+  Bind Scope phronesis_scope with Phronesis.
+
+  Module PhronesisNotations.
+
+    Notation "'⨂' i : I => F" := (phronesis_demonic (fun i : I => F)) (at level 80, i at next level, I at next level) : phronesis_scope.
+    Notation "'⨁' i : I => F" := (phronesis_angelic (fun i : I => F)) (at level 80, i at next level, I at next level) : phronesis_scope.
+
+    Infix "⊗" := phronesis_demonic_binary (at level 40, left associativity) : phronesis_scope.
+    Infix "⊕" := phronesis_angelic_binary (at level 50, left associativity) : phronesis_scope.
+
+    (* Notation "x <- ma ;; mb" := (phronesis_mutator_bind ma (fun x => mb)) (at level 100, right associativity, ma at next level) : phronesis_scope. *)
+    Notation "ma >>= f" := (phronesis_mutator_bind ma f) (at level 50, left associativity) : phronesis_scope.
+    Notation "ma >>>= f" := (phronesis_bind ma f) (at level 50, left associativity) : phronesis_scope.
+    Notation "ma ;; mb" := (phronesis_mutator_bind_right ma mb) : phronesis_scope.
+    Notation "ma *> mb" := (phronesis_mutator_bind_right ma mb) (at level 50, left associativity) : phronesis_scope.
+    Notation "ma <* mb" := (phronesis_mutator_bind_left ma mb) (at level 50, left associativity) : phronesis_scope.
+
+  End PhronesisNotations.
+  Import PhronesisNotations.
+  Local Open Scope phronesis_scope.
+
+  Section PhronesisOperations.
+
+    Definition phronesis_fail {Σ Γ} {A : Type} : Phronesis Σ Γ Γ A :=
+      fun s => outcome_fail.
+    (* Definition phronesis_get {Σ Γ} : Phronesis Σ Γ Γ (SymbolicState Σ Γ) := *)
+    (*   fun s => outcome_pure (existT _ Σ (sub_id Σ , s , s , nil)). *)
+    (* Definition phronesis_put {Σ Σ' Γ Γ'} (ζ : Sub Σ Σ') (s : SymbolicState Σ' Γ') : Phronesis Σ Γ Γ' unit := *)
+    (*   fun _ => outcome_pure (existT _ Σ' (ζ , tt , s, nil)). *)
+    Definition phronesis_modify {Σ Σ' Γ Γ'} (ζ : Sub Σ Σ') (f : SymbolicState Σ Γ -> SymbolicState Σ' Γ') : Phronesis Σ Γ Γ' unit :=
+      fun s => outcome_pure (existT _ Σ' (ζ , tt , f s , nil)).
+
+    (* Definition phronesis_modify_pathcondition {Σ Γ} (f : PathCondition Σ -> PathCondition Σ) : Phronesis Σ Γ Γ unit := *)
+    (*   phronesis_modify (sub_id Σ) (fun '(MkSymbolicState Φ δ h) => MkSymbolicState (f Φ) δ h). *)
+
+    (* Definition phronesis_get_local {Σ Γ} : Phronesis Σ Γ Γ (SymbolicLocalStore Σ Γ) := *)
+    (*   phronesis_map symbolicstate_localstore phronesis_get. *)
+    (* Definition phronesis_put_local {Σ Γ Γ'} (δ' : SymbolicLocalStore Σ Γ') : Phronesis Σ Γ Γ' unit := *)
+    (*   fun '(MkSymbolicState Φ _ ĥ) => outcome_pure (tt , MkSymbolicState Φ δ' ĥ , nil). *)
+    (* Definition phronesis_modify_local {Σ Γ Γ'} (f : SymbolicLocalStore Σ Γ -> SymbolicLocalStore Σ Γ') : Phronesis Σ Γ Γ' unit := *)
+    (*   phronesis_modify (sub_id Σ) (fun '(MkSymbolicState Φ δ h) => MkSymbolicState Φ (f δ) h). *)
+    (* Definition phronesis_pop_local {Σ Γ x σ} : Phronesis Σ (Γ ▻ (x , σ)) Γ unit := *)
+    (*   phronesis_modify_local (fun δ => env_tail δ). *)
+    (* Definition phronesis_pops_local {Σ Γ} Δ : Phronesis Σ (Γ ▻▻ Δ) Γ unit := *)
+    (*   phronesis_modify_local (fun δΓΔ => env_drop Δ δΓΔ). *)
+    (* Definition phronesis_push_local {Σ Γ x} σ (v : Term Σ σ) : Phronesis Σ Γ (Γ ▻ (x , σ)) unit := *)
+    (*   phronesis_modify_local (fun δ => env_snoc δ (x , σ) v). *)
+    (* Definition phronesis_pushs_local {Σ Γ Δ} (δΔ : Env' (Term Σ) Δ) : Phronesis Σ Γ (Γ ▻▻ Δ) unit := *)
+    (*   phronesis_modify_local (fun δΓ => env_cat δΓ δΔ). *)
+
+    (* Definition phronesis_get_heap {Σ Γ} : Phronesis Σ Γ Γ (SymbolicHeap Σ) := *)
+    (*   phronesis_map symbolicstate_heap phronesis_get. *)
+    (* Definition phronesis_put_heap {Σ Γ} (h : SymbolicHeap Σ) : Phronesis Σ Γ Γ unit := *)
+    (*   fun '(MkSymbolicState Φ δ _) => outcome_pure (tt , MkSymbolicState Φ δ h , nil). *)
+    Definition phronesis_modify_heap {Σ Γ} (f : SymbolicHeap Σ -> SymbolicHeap Σ) : Phronesis Σ Γ Γ unit :=
+      phronesis_modify (sub_id Σ) (fun '(MkSymbolicState Φ δ h) => MkSymbolicState Φ δ (f h)).
+
+    Definition phronesis_eval_exp {Σ Γ σ} (e : Exp Γ σ) : Phronesis Σ Γ Γ (Term Σ σ) :=
+      phronesis_lift_mutator (mutator_eval_exp e).
+    Definition phronesis_assume_formula {Σ Γ} (fml : Formula Σ) : Phronesis Σ Γ Γ unit :=
+      phronesis_modify (sub_id Σ) (symbolic_assume_formula fml).
+    Definition phronesis_assume_term {Σ Γ} (t : Term Σ ty_bool) : Phronesis Σ Γ Γ unit :=
+      phronesis_assume_formula (formula_bool t).
+    (* Definition phronesis_assume_exp {Σ Γ} (e : Exp Γ ty_bool) : Phronesis Σ Γ Γ unit := *)
+    (*   phronesis_eval_exp e >>= phronesis_assume_term. *)
+
+    Program Definition phronesis_assert_formula {Σ Γ} (fml : Formula Σ) : Phronesis Σ Γ Γ unit :=
+      fun δ => outcome_pure (existT _ Σ (sub_id Σ , tt , δ , existT Formula Σ fml :: nil)).
+    Definition phronesis_assert_term {Σ Γ} (t : Term Σ ty_bool) : Phronesis Σ Γ Γ unit :=
+      phronesis_assume_formula (formula_bool t).
+    (* Definition phronesis_assert_exp {Σ Γ} (e : Exp Γ ty_bool) : Phronesis Σ Γ Γ unit := *)
+    (*   phronesis_lift_mutator (mutator_assert_exp e). *)
+
+    Definition phronesis_produce_chunk {Σ Γ} (c : Chunk Σ) : Phronesis Σ Γ Γ unit :=
+      phronesis_modify_heap (cons c).
+    Definition phronesis_consume_chunk {Σ Γ} (c : Chunk Σ) : Phronesis Σ Γ Γ unit :=
+      phronesis_lift_mutator (mutator_consume_chunk c).
+
+    Fixpoint phronesis_produce {Σ Σ' Γ} (ζ : Sub Σ Σ') (asn : Assertion Σ) : Phronesis Σ' Γ Γ unit :=
+      match asn with
+      | asn_bool b      => phronesis_assume_term (sub_term ζ b)
+      | asn_chunk c     => phronesis_produce_chunk (sub_chunk ζ c)
+      | asn_if b a1 a2  => (mutator_assume_term (sub_term ζ b)            *> phronesis_produce ζ a1) ⊗
+                           (mutator_assume_term (sub_term ζ (term_not b)) *> phronesis_produce ζ a2)
+      | asn_sep a1 a2   => phronesis_bind (phronesis_produce ζ a1) (fun _ ζ' _ => phronesis_produce (sub_comp ζ ζ') a2)
+      | asn_exist ς τ a => @phronesis_fresh _ _ _ (ς , τ) (phronesis_produce (sub_up1 ζ) a)
+      end.
+
+    Fixpoint phronesis_consume {Σ Σ' Γ} (ζ : Sub Σ Σ') (asn : Assertion Σ) : Phronesis Σ' Γ Γ unit :=
+      match asn with
+      | asn_bool b      => phronesis_assert_term (sub_term ζ b)
+      | asn_chunk c     => phronesis_consume_chunk (sub_chunk ζ c)
+      | asn_if b a1 a2  => (mutator_assert_term (sub_term ζ b)            *> phronesis_consume ζ a1) ⊗
+                           (mutator_assert_term (sub_term ζ (term_not b)) *> phronesis_consume ζ a2)
+      | asn_sep a1 a2   => phronesis_bind (phronesis_consume ζ a1) (fun _ ζ' _ => phronesis_consume (sub_comp ζ ζ') a2)
+      | asn_exist ς τ a => ⨁ t : Term Σ' τ => phronesis_consume (sub_snoc ζ (ς , τ) t) a
+      end.
+
+  End PhronesisOperations.
+
+  Section PhronesisExecution.
+
+    (* Inductive Prim  *)
+
+    (* Inductive Sym (Σ : Ctx (𝑺 * Ty)) (Γ1 Γ2 : Ctx (𝑿 * Ty)) (A : Type) : Type := *)
+    (* | sym_done (a : A) *)
+    (* | sym_prim (p : Prim Σ) (Sym Σ Γ1 Γ2 A). *)
+
+    (*              f Σ -> Sym Σ Γ1 Γ2 A *)
+
+    Program Fixpoint phronesis_exec {Σ Γ σ} (s : Stm Γ σ) : Phronesis Σ Γ Γ (Term Σ σ) :=
+      match s with
+      | stm_lit τ l => phronesis_pure (term_lit _ τ l)
+      | stm_exp e => phronesis_eval_exp e
+      | stm_let x τ s k => _
+      | stm_let' δ k => _
+      | stm_assign x e => _
+      | stm_call f es => _
+      | stm_call' Δ δ' τ s => _
+      | stm_if e s1 s2 => _
+      | stm_seq e k => _
+      | stm_assert e1 _ => _
+      | stm_fail τ s => _
+      | stm_match_list e alt_nil xh xt alt_cons => _
+      | stm_match_sum e xinl alt_inl xinr alt_inr => _
+      | stm_match_pair e xl xr rhs => _
+      | stm_match_enum E e alts => _
+      | stm_match_tuple e p rhs => _
+      | stm_match_union U e altx alts => _
+      | stm_match_record R e p rhs => _
+      | stm_read_register reg => _
+      | stm_write_register reg e => _
+      | stm_bind s k => _
+      | stm_read_memory _ => _
+      | stm_write_memory _ _ => _
+      end.
+    Admit Obligations of phronesis_exec.
+
+  End PhronesisExecution.
+
+  (* Section Plethoric. *)
+
+  (*   Definition Plethoric (Σ : Ctx (𝑺 * Ty)) (Γ1 Γ2 : Ctx (𝑿 * Ty)) (A : Ctx (𝑺 * Ty) -> Type) : Type := *)
+  (*     forall Σ', Sub Σ Σ' -> SymbolicState Σ' Γ1 -> Outcome { Σ'' & Sub Σ' Σ'' * A Σ'' * SymbolicState Σ'' Γ2 * list Obligation }%type. *)
+  (*   Bind Scope plethoric_scope with Plethoric. *)
+
+  (*   Definition plethoric_pure {Σ Γ A} (a : A) : Plethoric Σ Γ Γ A := *)
+  (*     fun Σ' ζ s => outcome_pure (existT _ Σ' (sub_id _ , a, s , nil)). *)
+  (*   Definition plethoric_bind {Σ Γ1 Γ2 Γ3 A B} (ma : Plethoric Σ Γ1 Γ2 A) (f : A -> Plethoric Σ Γ2 Γ3 B) : Plethoric Σ Γ1 Γ3 B := *)
+  (*     fun Σ0 ζ0 s0 => *)
+  (*       outcome_bind (ma Σ0 ζ0 s0)               (fun '(existT _ Σ1 (ζ1 , a , s1 , w1)) => *)
+  (*       outcome_bind (f a _ (sub_comp ζ0 ζ1) s1) (fun '(existT _ Σ2 (ζ2 , b , s2 , w2)) => *)
+  (*       outcome_pure (existT _ Σ2 (sub_comp ζ1 ζ2 , b , s2 , w1 ++ w2)))). *)
+  (*   Definition plethoric_bind_right {Σ Γ1 Γ2 Γ3 A B} (ma : Plethoric Σ Γ1 Γ2 A) (mb : Plethoric Σ Γ2 Γ3 B) : Plethoric Σ Γ1 Γ3 B := *)
+  (*     plethoric_bind ma (fun _ => mb). *)
+  (*   Definition plethoric_bind_left {Σ Γ1 Γ2 Γ3 A B} (ma : Plethoric Σ Γ1 Γ2 A) (mb : Plethoric Σ Γ2 Γ3 B) : Plethoric Σ Γ1 Γ3 A := *)
+  (*     plethoric_bind ma (fun a => plethoric_bind mb (fun _ => plethoric_pure a)). *)
+  (*   Definition plethoric_map {Σ Γ1 Γ2 A B} (f : A -> B) (ma : Plethoric Σ Γ1 Γ2 A) : Plethoric Σ Γ1 Γ2 B := *)
+  (*     plethoric_bind ma (fun a => plethoric_pure (f a)). *)
+
+  (*   Definition plethoric_lift_outcome {Σ Γ A} (o : Outcome A) : Plethoric Σ Γ Γ A := *)
+  (*     fun Σ' ζ s => outcome_map (fun a => existT _ Σ' (sub_id Σ' , a , s , nil)) o. *)
+  (*   (* Definition plethoric_lift_mutator {Σ Γ1 Γ2 A} (m : Mutator Σ Γ1 Γ2 A) : Plethoric Σ Γ1 Γ2 A := *) *)
+  (*   (*   fun Σ' ζ s => outcome_map (fun '(a , s , w) => existT _ Σ' (sub_id Σ' , a , sub_symbolicstate ζ s , w)) (m s). *) *)
+
+  (*   Definition plethoric_demonic {Σ : Ctx (𝑺 * Ty)} {Γ1 Γ2 : Ctx (𝑿 * Ty)} {I : Type} {A : Type} (ms : I -> Plethoric Σ Γ1 Γ2 A) : Plethoric Σ Γ1 Γ2 A := *)
+  (*     fun Σ' ζ s => (⨂ i : I => ms i Σ' ζ s)%out. *)
+  (*   Definition plethoric_angelic {Σ : Ctx (𝑺 * Ty)} {Γ1 Γ2 : Ctx (𝑿 * Ty)} {I : Type} {A : Type} (ms : I -> Plethoric Σ Γ1 Γ2 A) : Plethoric Σ Γ1 Γ2 A := *)
+  (*     fun Σ' ζ s => (⨁ i : I => ms i Σ' ζ s)%out. *)
+  (*   Definition plethoric_demonic_binary {Σ Γ1 Γ2 A} (m1 m2 : Plethoric Σ Γ1 Γ2 A) : Plethoric Σ Γ1 Γ2 A := *)
+  (*     plethoric_demonic (fun b : bool => if b then m1 else m2). *)
+  (*   Definition plethoric_angelic_binary {Σ Γ1 Γ2 A} (m1 m2 : Plethoric Σ Γ1 Γ2 A) : Plethoric Σ Γ1 Γ2 A := *)
+  (*     plethoric_angelic (fun b : bool => if b then m1 else m2). *)
+
+  (*   Definition plethoric_fresh {Σ Γ A} b (ma : Plethoric (Σ ▻ b) Γ Γ A) : Plethoric Σ Γ Γ A := *)
+  (*     fun Σ1 ζ1 s1 => outcome_bind *)
+  (*                       (ma _ (sub_up1 ζ1) (wk1_symbolicstate s1)) *)
+  (*                       (fun '(existT _ Σ' (ζ , a , s' , w)) => *)
+  (*                          outcome_pure (existT _ Σ' (sub_comp sub_wk1 ζ , a , s' , w))). *)
+  (*   Arguments plethoric_fresh {_ _ _} _ _. *)
+
+  (* End Plethoric. *)
+  (* Bind Scope plethoric_scope with Plethoric. *)
+
+  (* Module PlethoricNotations. *)
+
+  (*   Notation "'⨂' i : I => F" := (plethoric_demonic (fun i : I => F)) (at level 80, i at next level, I at next level) : plethoric_scope. *)
+  (*   Notation "'⨁' i : I => F" := (plethoric_angelic (fun i : I => F)) (at level 80, i at next level, I at next level) : plethoric_scope. *)
+
+  (*   Infix "⊗" := plethoric_demonic_binary (at level 40, left associativity) : plethoric_scope. *)
+  (*   Infix "⊕" := plethoric_angelic_binary (at level 50, left associativity) : plethoric_scope. *)
+
+  (*   Notation "x <- ma ;; mb" := (plethoric_bind ma (fun x => mb)) (at level 100, right associativity, ma at next level) : plethoric_scope. *)
+  (*   Notation "ma >>= f" := (plethoric_bind ma f) (at level 50, left associativity) : plethoric_scope. *)
+  (*   Notation "m1 ;; m2" := (plethoric_bind m1 (fun _ _ _ => m2)) : plethoric_scope. *)
+  (*   Notation "ma *> mb" := (plethoric_bind_right ma mb) (at level 50, left associativity) : plethoric_scope. *)
+  (*   Notation "ma <* mb" := (plethoric_bind_left ma mb) (at level 50, left associativity) : plethoric_scope. *)
+
+  (* End PlethoricNotations. *)
+  (* Import PlethoricNotations. *)
+  (* Local Open Scope plethoric_scope. *)
+
+  (* Section PlethoricOperations. *)
+
+  (*   Local Open Scope plethoric_scope. *)
+
+  (*   Definition plethoric_fail {Σ Γ} {A : Type} : Plethoric Σ Γ Γ A := *)
+  (*     fun _ _ s => outcome_fail. *)
+  (*   Definition plethoric_get {Σ Γ} : Plethoric Σ Γ Γ (SymbolicState Σ Γ) := *)
+  (*     fun s => outcome_pure (s , s , nil). *)
+  (*   Definition plethoric_put {Σ Γ Γ'} (s : SymbolicState Σ Γ') : Plethoric Σ Γ Γ' unit := *)
+  (*     fun _ => outcome_pure (tt , s, nil). *)
+  (*   Definition plethoric_modify {Σ Γ Γ'} (f : SymbolicState Σ Γ -> SymbolicState Σ Γ') : Plethoric Σ Γ Γ' unit := *)
+  (*     plethoric_get >>= fun δ => plethoric_put (f δ). *)
+  (*   Definition plethoric_get_local {Σ Γ} : Plethoric Σ Γ Γ (SymbolicLocalStore Σ Γ) := *)
+  (*     fun s => outcome_pure (symbolicstate_localstore s , s , nil). *)
+  (*   Definition plethoric_put_local {Σ Γ Γ'} (δ' : SymbolicLocalStore Σ Γ') : Plethoric Σ Γ Γ' unit := *)
+  (*     fun '(MkSymbolicState Φ _ ĥ) => outcome_pure (tt , MkSymbolicState Φ δ' ĥ , nil). *)
+  (*   Definition plethoric_modify_local {Σ Γ Γ'} (f : SymbolicLocalStore Σ Γ -> SymbolicLocalStore Σ Γ') : Plethoric Σ Γ Γ' unit := *)
+  (*     plethoric_get_local >>= fun δ => plethoric_put_local (f δ). *)
+  (*   Definition plethoric_pop_local {Σ Γ x σ} : Plethoric Σ (Γ ▻ (x , σ)) Γ unit := *)
+  (*     plethoric_modify_local (fun δ => env_tail δ). *)
+  (*   Definition plethoric_pops_local {Σ Γ} Δ : Plethoric Σ (Γ ▻▻ Δ) Γ unit := *)
+  (*     plethoric_modify_local (fun δΓΔ => env_drop Δ δΓΔ). *)
+  (*   Definition plethoric_push_local {Σ Γ x} σ (v : Term Σ σ) : Plethoric Σ Γ (Γ ▻ (x , σ)) unit := *)
+  (*     plethoric_modify_local (fun δ => env_snoc δ (x , σ) v). *)
+  (*   Definition plethoric_pushs_local {Σ Γ Δ} (δΔ : Env' (Term Σ) Δ) : Plethoric Σ Γ (Γ ▻▻ Δ) unit := *)
+  (*     plethoric_modify_local (fun δΓ => env_cat δΓ δΔ). *)
+
+  (*   Definition plethoric_get_heap {Σ Γ} : Plethoric Σ Γ Γ (SymbolicHeap Σ) := *)
+  (*     plethoric_map symbolicstate_heap plethoric_get. *)
+  (*   Definition plethoric_put_heap {Σ Γ} (h : SymbolicHeap Σ) : Plethoric Σ Γ Γ unit := *)
+  (*     fun '(MkSymbolicState Φ δ _) => outcome_pure (tt , MkSymbolicState Φ δ h , nil). *)
+  (*   Definition plethoric_modify_heap {Σ Γ} (f : SymbolicHeap Σ -> SymbolicHeap Σ) : Plethoric Σ Γ Γ unit := *)
+  (*     plethoric_modify (fun '(MkSymbolicState Φ δ h) => MkSymbolicState Φ δ (f h)). *)
+
+  (*   Definition plethoric_eval_exp {Σ Γ σ} (e : Exp Γ σ) : Plethoric Σ Γ Γ (Term Σ σ) := *)
+  (*     plethoric_get_local >>= fun δ => plethoric_pure (symbolic_eval_exp e δ). *)
+
+  (*   Definition plethoric_assume_formula {Σ Γ} (fml : Formula Σ) : Plethoric Σ Γ Γ unit := *)
+  (*     plethoric_modify (symbolic_assume_formula fml). *)
+  (*   Definition plethoric_assume_term {Σ Γ} (t : Term Σ ty_bool) : Plethoric Σ Γ Γ unit := *)
+  (*     plethoric_assume_formula (formula_bool t). *)
+  (*   Definition plethoric_assume_exp {Σ Γ} (e : Exp Γ ty_bool) : Plethoric Σ Γ Γ unit := *)
+  (*     plethoric_eval_exp e >>= plethoric_assume_term. *)
+
+  (*   Definition plethoric_assert_formula {Σ Γ} (fml : Formula Σ) : Plethoric Σ Γ Γ unit := *)
+  (*     fun δ => outcome_pure (tt , δ , existT Formula Σ fml :: nil). *)
+  (*   Definition plethoric_assert_term {Σ Γ} (t : Term Σ ty_bool) : Plethoric Σ Γ Γ unit := *)
+  (*     plethoric_assume_formula (formula_bool t). *)
+  (*   Definition plethoric_assert_exp {Σ Γ} (e : Exp Γ ty_bool) : Plethoric Σ Γ Γ unit := *)
+  (*     plethoric_eval_exp e >>= plethoric_assert_term. *)
+
+  (*   Definition plethoric_produce_chunk {Σ Γ} (p : 𝑷) (ts : Env (Term Σ) (𝑷_Ty p)) : Plethoric Σ Γ Γ unit := *)
+  (*     plethoric_modify_heap (fun h => existT _ p ts :: h). *)
+  (*   Arguments plethoric_produce_chunk {_ _} _ _. *)
+
+  (*   Definition plethoric_consume_chunk {Σ Γ} (p : 𝑷) (ts : Env (Term Σ) (𝑷_Ty p)) : Plethoric Σ Γ Γ unit := *)
+  (*     fun '(MkSymbolicState Φ δ h) => *)
+  (*       outcome_bind *)
+  (*         (outcome_consume_chunk p ts h) *)
+  (*         (fun h' => outcome_pure (tt , MkSymbolicState Φ δ h' , nil)). *)
+  (*   Global Arguments plethoric_consume_chunk {_ _} _ _. *)
+
+  (*   Fixpoint plethoric_produce {Σ Γ} (asn : Assertion Σ) : Plethoric Σ Γ Γ unit := *)
+  (*     match asn with *)
+  (*     | asn_bool b      => plethoric_assume_term b *)
+  (*     | asn_pred p ts   => plethoric_produce_chunk p ts *)
+  (*     | asn_if b a1 a2  => (plethoric_assume_term b ;; plethoric_produce a1) ⊗ *)
+  (*                          (plethoric_assume_term (term_not b) ;; plethoric_produce a2) *)
+  (*     | asn_sep a1 a2   => plethoric_produce a1 *> plethoric_produce a2 *)
+  (*     | asn_exist ς τ a => plethoric_fail *)
+  (*     end. *)
+
+  (*   Fixpoint plethoric_consume {Σ Γ} (asn : Assertion Σ) : Plethoric Σ Γ Γ unit := *)
+  (*     match asn with *)
+  (*     | asn_bool b      => plethoric_assert_term b *)
+  (*     | asn_pred p ts   => plethoric_consume_chunk p ts *)
+  (*     | asn_if b a1 a2  => (plethoric_assume_term b ;; plethoric_consume a1) ⊗ *)
+  (*                          (plethoric_assume_term (term_not b) ;; plethoric_consume a2) *)
+  (*     | asn_sep a1 a2   => plethoric_consume a1 *> plethoric_consume a2 *)
+  (*     | asn_exist ς τ a => plethoric_fail *)
+  (*     end. *)
+
+  (*   Program Fixpoint plethoric_exec {Σ Γ σ} (s : Stm Γ σ) : Plethoric Σ Γ Γ (Term Σ σ) := *)
+  (*     match s with *)
+  (*     | stm_lit τ l => plethoric_pure (term_lit _ τ l) *)
+  (*     | stm_exp e => plethoric_eval_exp e *)
+  (*     | stm_let x τ s k => *)
+  (*       plethoric_exec s >>= fun v => *)
+  (*       plethoric_push_local v *> *)
+  (*       plethoric_exec k              <* *)
+  (*       plethoric_pop_local *)
+  (*     | stm_let' δ k => *)
+  (*       plethoric_pushs_local (env_map (fun _ => term_lit Σ _) δ) *> *)
+  (*       plethoric_exec k <* *)
+  (*       plethoric_pops_local _ *)
+  (*     | stm_assign x e => plethoric_exec e >>= fun v => *)
+  (*       plethoric_modify_local (fun δ => δ ⟪ x ↦ v ⟫)%env *> *)
+  (*       plethoric_pure v *)
+  (*     | stm_call f es => _ *)
+  (*     | stm_call' Δ δ' τ s => *)
+  (*       plethoric_get_local                                      >>= fun δ => *)
+  (*       plethoric_put_local (env_map (fun _ => term_lit _ _) δ') >>= fun _ => *)
+  (*       plethoric_exec s                                                >>= fun t => *)
+  (*       plethoric_put_local δ                                    >>= fun _ => *)
+  (*       plethoric_pure t *)
+  (*     | stm_if e s1 s2 => *)
+  (*       (plethoric_assume_exp e ;; plethoric_exec s1) ⊗ *)
+  (*       (plethoric_assume_exp (exp_not e) ;; plethoric_exec s2) *)
+  (*     | stm_seq e k => mutator_exec e ;; mutator_exec k *)
+  (*     | stm_assert e1 _ => mutator_eval_exp e1 >>= fun t => *)
+  (*                          mutator_assert_term t ;; *)
+  (*                          mutator_pure t *)
+  (*     | stm_fail τ s =>    mutator_fail *)
+  (*     | stm_match_list e alt_nil xh xt alt_cons => *)
+  (*       mutator_eval_exp e >>= fun t => *)
+  (*                                (* (formula_term_eq t nil) *) *)
+  (*       (mutator_assume_formula _ ;; mutator_exec alt_nil) ⊗ _ *)
+  (*       (* mutator_exists (fun ςh ςt => *) *)
+  (*       (*                   mutator_assume_formula (weaken t (ςh , ςt) = cons ςh ςt) ;; *) *)
+  (*       (*                   xh  ↦ ςh ;; *) *)
+  (*       (*                   xt  ↦ ςt ;; *) *)
+  (*       (*                   mutator_exec alt_cons ;; *) *)
+  (*       (*                   pop ;; *) *)
+  (*       (*                   pop) *) *)
+  (*     | stm_match_sum e xinl alt_inl xinr alt_inr => _ *)
+  (*     | stm_match_pair e xl xr rhs => _ *)
+  (*     | stm_match_enum E e alts => _ *)
+  (*     | stm_match_tuple e p rhs => _ *)
+  (*     | stm_match_union U e altx alts => _ *)
+  (*     | stm_match_record R e p rhs => _ *)
+  (*     | stm_read_register reg => _ *)
+  (*     | stm_write_register reg e => _ *)
+  (*     | stm_bind s k => _ *)
+  (*     | stm_read_memory _ => _ *)
+  (*     | stm_write_memory _ _ => _ *)
+  (*     end. *)
+  (*   Admit Obligations of mutator_exec. *)
+
+  (* End MutatorOperations. *)
 
 End SymbolicSemantics_Mutator.

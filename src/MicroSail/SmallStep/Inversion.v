@@ -103,7 +103,7 @@ Module Inversion
       exists (s0 : Stm Γ σ),
           ⟨ γ2, μ2, δ2, stm_let x τ s1' s2 ⟩ ---> ⟨ γ2, μ2, δ2, s0 ⟩ /\
           ⟨ γ2, μ2, δ2, s0 ⟩ --->* ⟨ γ3, μ3, δ3, t ⟩.
-  Proof.
+  Proof using.
     remember (stm_let x τ s1 s2) as s. revert steps s1 s2 Heqs.
     steps_inversion_induction.
   Qed.
@@ -116,7 +116,7 @@ Module Inversion
       exists (s0 : Stm Γ σ),
         ⟨ γ2, μ2, δ2, stm_let' δΔ' k' ⟩ ---> ⟨ γ2, μ2, δ2, s0 ⟩ /\
         ⟨ γ2, μ2, δ2, s0 ⟩ --->* ⟨ γ3, μ3, δ3, t ⟩.
-  Proof.
+  Proof using.
     remember (stm_let' δΔ k) as s. revert steps δΔ k Heqs.
     steps_inversion_induction.
   Qed.
@@ -129,7 +129,7 @@ Module Inversion
       exists (s0 : Stm Γ σ),
         ⟨ γ2, μ2, δ2, stm_seq s1' s2 ⟩ ---> ⟨ γ2, μ2, δ2 , s0 ⟩ /\
         ⟨ γ2, μ2, δ2 , s0 ⟩ --->* ⟨ γ3, μ3, δ3, t ⟩.
-  Proof.
+  Proof using.
     remember (stm_seq s1 s2) as s. revert steps s1 s2 Heqs.
     steps_inversion_induction.
   Qed.
@@ -142,7 +142,7 @@ Module Inversion
       exists s0,
         ⟨ γ2, μ2, δ1, stm_call' Δ δΔ' σ k' ⟩ ---> ⟨ γ2, μ2, δ1, s0 ⟩ /\
         ⟨ γ2, μ2, δ1, s0⟩ --->* ⟨ γ3, μ3, δ3, t ⟩.
-  Proof.
+  Proof using.
     remember (stm_call' Δ δΔ σ k) as s. revert steps δΔ k Heqs.
     steps_inversion_induction.
   Qed.
@@ -155,7 +155,7 @@ Module Inversion
       exists (s0 : Stm Γ σ),
         ⟨ γ2, μ2, δ2, stm_assign x s1' ⟩ ---> ⟨ γ2, μ2, δ2' , s0 ⟩ /\
         ⟨ γ2, μ2, δ2' , s0 ⟩ --->* ⟨ γ3, μ3, δ3, t ⟩.
-  Proof.
+  Proof using.
     remember (stm_assign x s1) as s. revert steps x xInΓ s1 Heqs.
     steps_inversion_induction.
   Qed.
@@ -168,7 +168,7 @@ Module Inversion
       exists (s0 : Stm Γ σ),
         ⟨ γ2, μ2, δ2, stm_bind s1' k ⟩ ---> ⟨ γ2, μ2, δ2 , s0 ⟩ /\
         ⟨ γ2, μ2, δ2 , s0 ⟩ --->* ⟨ γ3, μ3, δ3, t ⟩.
-  Proof.
+  Proof using.
     remember (stm_bind s1 k) as s. revert steps s1 k Heqs.
     steps_inversion_induction.
   Qed.
