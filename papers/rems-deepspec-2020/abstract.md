@@ -39,7 +39,7 @@ numbersections: true
   * automated reasoning
 
 ## State of the Art + Drawbacks + Problems
-* REMS project, SAIL language and tools
+* REMS project, SAIL language and tools [@sail]
   * Executable semantics (interpreter + emulators)
   * Models of real world ISAs
   * Models of extensions: CHERI-MIPS, CHERI-RISCV
@@ -50,7 +50,7 @@ numbersections: true
     => limited logic and limited automation
 
 * Verification (based on separation logic)
-  * Tools: Smallfoot, GRASShopper, VeriFast (muVeriFast)
+  * Tools: Smallfoot, GRASShopper, VeriFast (muVeriFast [@muverifast])
   * Verified Verifiers: Bedrock [@bedrock; @stencil], Holfoot [@holfoot],
     VeriSmall [@verismall], Mechanized Featherweight VeriFast [@featherweightverifast]
 
