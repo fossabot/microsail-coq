@@ -1,49 +1,74 @@
 @article{bedrock,
- author = {Chlipala, Adam},
- title = {Mostly-automated Verification of Low-level Programs in Computational Separation Logic},
- journal = {SIGPLAN Not.},
- issue_date = {June 2011},
- volume = {46},
- number = {6},
- month = jun,
- year = {2011},
- issn = {0362-1340},
- pages = {234--245},
- numpages = {12},
- url = {http://doi.acm.org/10.1145/1993316.1993526},
- doi = {10.1145/1993316.1993526},
- acmid = {1993526},
- publisher = {ACM},
- address = {New York, NY, USA},
- keywords = {functional programming, interactive proof assistants, low-level programming languages, separation logic},
+  author =       {Chlipala, Adam},
+  title =        {Mostly-automated Verification of Low-level Programs in
+                  Computational Separation Logic},
+  journal =      {SIGPLAN Not.},
+  issue_date =   {June 2011},
+  volume =       {46},
+  number =       {6},
+  month =        jun,
+  year =         {2011},
+  issn =         {0362-1340},
+  pages =        {234--245},
+  numpages =     {12},
+  url =          {http://doi.acm.org/10.1145/1993316.1993526},
+  doi =          {10.1145/1993316.1993526},
+  acmid =        {1993526},
+  publisher =    {ACM},
+  address =      {New York, NY, USA},
+  keywords =     {functional programming, interactive proof assistants,
+                  low-level programming languages, separation logic},
 }
 
-﻿@Article{stencil,
-author="Gr{\'e}goire, Thomas
-and Chlipala, Adam",
-title="Mostly Automated Formal Verification of Loop Dependencies with Applications to Distr
-ibuted Stencil Algorithms",
-journal="Journal of Automated Reasoning",
-year="2019",
-month="Feb",
-day="01",
-volume="62",
-number="2",
-pages="193--213",
-abstract="The class of stencil programs involves repeatedly updating elements of arrays acc
-ording to fixed patterns, referred to as stencils. Stencil problems are ubiquitous in scien
-tific computing and are used as an ingredient to solve more involved problems. Their high r
-egularity allows massive parallelization. Two important challenges in designing such algori
-thms are cache efficiency and minimizing the number of communication steps between nodes. I
-n this paper, we introduce a mathematical framework for a crucial aspect of formal verifica
-tion of both sequential and distributed stencil algorithms, and we describe its Coq impleme
-ntation. We present a domain-specific embedded programming language with support for automa
-ting the most tedious steps of proofs that nested loops respect dependencies, applicable to
- sequential and distributed examples. Finally, we evaluate the robustness of our library by
- proving the dependency-correctness of some real-world stencil algorithms, including a stat
-e-of-the-art cache-oblivious sequential algorithm, as well as two optimized distributed ker
-nels.",
-issn="1573-0670",
-doi="10.1007/s10817-018-9451-y",
-url="https://doi.org/10.1007/s10817-018-9451-y"
+@article{stencil,
+  author =       "Gr{\'e}goire, Thomas and Chlipala, Adam",
+  title =        "Mostly Automated Formal Verification of Loop Dependencies with
+                  Applications to Distributed Stencil Algorithms",
+  journal =      "Journal of Automated Reasoning",
+  year =         "2019",
+  month =        "Feb",
+  day =          "01",
+  volume =       "62",
+  number =       "2",
+  pages =        "193--213",
+  issn =         "1573-0670",
+  doi =          "10.1007/s10817-018-9451-y",
+  url =          "https://doi.org/10.1007/s10817-018-9451-y"
+}
+
+@inproceedings{verismall,
+  author =       "Appel, Andrew W.",
+  editor =       "Jouannaud, Jean-Pierre and Shao, Zhong",
+  title =        "VeriSmall: Verified Smallfoot Shape Analysis",
+  booktitle =    "Certified Programs and Proofs",
+  year =         "2011",
+  publisher =    "Springer Berlin Heidelberg",
+  address =      "Berlin, Heidelberg",
+  pages =        "231--246",
+  isbn =         "978-3-642-25379-9"
+}
+
+@inproceedings{holfoot,
+  author =       "Tuerk, Thomas",
+  editor =       "Berghofer, Stefan and Nipkow, Tobias and Urban, Christian and
+                  Wenzel, Makarius",
+  title =        "A Formalisation of Smallfoot in HOL",
+  booktitle =    "Theorem Proving in Higher Order Logics",
+  year =         "2009",
+  publisher =    "Springer Berlin Heidelberg",
+  address =      "Berlin, Heidelberg",
+  pages =        "469--484",
+  isbn =         "978-3-642-03359-9"
+}
+
+@article{featherweightverifast,
+  TITLE =        {{Featherweight VeriFast}},
+  AUTHOR =       {Jacobs, Bart and Vogels, Frédéric and Piessens, Frank},
+  URL =          {https://lmcs.episciences.org/1595},
+  DOI =          {10.2168/LMCS-11(3:19)2015},
+  JOURNAL =      {{Logical Methods in Computer Science}},
+  VOLUME =       {{Volume 11, Issue 3}},
+  YEAR =         {2015},
+  MONTH =        Sep,
+  KEYWORDS =     {Computer Science - Logic in Computer Science},
 }
